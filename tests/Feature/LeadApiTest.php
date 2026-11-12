@@ -78,7 +78,7 @@ class LeadApiTest extends TestCase
     {
         $lead = Lead::factory()->create();
 
-        $response = $this->getJson('/api/leads/' . $lead->id);
+        $response = $this->getJson('/api/leads/'.$lead->id);
 
         $response->assertStatus(200);
         $response->assertJsonFragment(['email' => $lead->email]);
@@ -140,7 +140,7 @@ class LeadApiTest extends TestCase
     {
         $lead = Lead::factory()->create(['status' => 'NEW']);
 
-        $response = $this->putJson('/api/leads/' . $lead->id, [
+        $response = $this->putJson('/api/leads/'.$lead->id, [
             'status' => 'CONTACTED',
             'notes' => 'Primeiro contato realizado por telefone.',
         ]);
@@ -156,9 +156,81 @@ class LeadApiTest extends TestCase
     {
         $lead = Lead::factory()->create();
 
-        $response = $this->deleteJson('/api/leads/' . $lead->id);
+        $response = $this->deleteJson('/api/leads/'.$lead->id);
 
         $response->assertStatus(200);
+    }
+
+    public function test_write_request_without_api_key_is_rejected()
+    {
+        unset($this->defaultHeaders['X-Api-Key']);
+
+        $response = $this->postJson('/api/leads', [
+            'name' => 'Sem Chave',
+            'email' => 'sem.chave@example.com',
+            'source' => 'WEBSITE',
+        ]);
+
+        $response->assertStatus(401);
+        $response->assertJson(['message' => 'Unauthorized']);
+        $this->assertDatabaseCount('leads', 0);
+    }
+
+    public function test_write_request_with_wrong_api_key_is_rejected()
+    {
+        $response = $this->withHeader('X-Api-Key', 'wrong-key')->postJson('/api/leads', [
+            'name' => 'Chave Errada',
+            'email' => 'chave.errada@example.com',
+            'source' => 'WEBSITE',
+        ]);
+
+        $response->assertStatus(401);
+        $response->assertJson(['message' => 'Unauthorized']);
+        $this->assertDatabaseCount('leads', 0);
+    }
+
+    public function test_write_request_with_correct_api_key_is_allowed()
+    {
+        $this->fakeSources();
+
+        $response = $this->withHeader('X-Api-Key', 'test-key')->postJson('/api/leads', [
+            'name' => 'Chave Certa',
+            'email' => 'chave.certa@example.com',
+            'source' => 'WEBSITE',
+        ]);
+
+        $response->assertStatus(201);
+        $this->assertDatabaseHas('leads', ['email' => 'chave.certa@example.com']);
+    }
+
+    public function test_write_request_is_rejected_when_api_key_is_empty()
+    {
+        config(['app.api_key' => '']);
+
+        $response = $this->postJson('/api/leads', [
+            'name' => 'Chave Vazia',
+            'email' => 'chave.vazia@example.com',
+            'source' => 'WEBSITE',
+        ]);
+
+        $response->assertStatus(401);
+        $response->assertJson(['message' => 'Unauthorized']);
+        $this->assertDatabaseCount('leads', 0);
+    }
+
+    public function test_write_request_is_rejected_when_api_key_is_not_configured()
+    {
+        config(['app.api_key' => null]);
+
+        $response = $this->postJson('/api/leads', [
+            'name' => 'Chave Ausente',
+            'email' => 'chave.ausente@example.com',
+            'source' => 'WEBSITE',
+        ]);
+
+        $response->assertStatus(401);
+        $response->assertJson(['message' => 'Unauthorized']);
+        $this->assertDatabaseCount('leads', 0);
     }
 
     public function test_sync_command_imports_leads_from_crm()
