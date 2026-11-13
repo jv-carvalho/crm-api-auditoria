@@ -109,7 +109,7 @@ class LeadApiTest extends TestCase
     {
         $lead = Lead::factory()->create();
 
-        $response = $this->getJson('/api/leads/' . $lead->id);
+        $response = $this->getJson('/api/leads/'.$lead->id);
 
         $response->assertStatus(200);
         $response->assertJsonFragment(['email' => $lead->email]);
@@ -243,7 +243,7 @@ class LeadApiTest extends TestCase
     {
         $lead = Lead::factory()->create(['status' => 'NEW']);
 
-        $response = $this->putJson('/api/leads/' . $lead->id, [
+        $response = $this->putJson('/api/leads/'.$lead->id, [
             'status' => 'CONTACTED',
             'notes' => 'Primeiro contato realizado por telefone.',
         ]);
@@ -263,7 +263,7 @@ class LeadApiTest extends TestCase
             'raw_payload' => '{"original": true}',
         ]);
 
-        $response = $this->putJson('/api/leads/' . $lead->id, [
+        $response = $this->putJson('/api/leads/'.$lead->id, [
             'name' => 'Nome Atualizado',
             'external_id' => 999,
             'raw_payload' => '{"malicious": true}',
@@ -287,7 +287,7 @@ class LeadApiTest extends TestCase
             'notes' => 'Observação anterior',
         ]);
 
-        $response = $this->putJson('/api/leads/' . $lead->id, [
+        $response = $this->putJson('/api/leads/'.$lead->id, [
             'notes' => 'Nova observação',
         ]);
 
@@ -304,7 +304,7 @@ class LeadApiTest extends TestCase
     {
         $lead = Lead::factory()->create();
 
-        $response = $this->deleteJson('/api/leads/' . $lead->id);
+        $response = $this->deleteJson('/api/leads/'.$lead->id);
 
         $response->assertStatus(200);
     }

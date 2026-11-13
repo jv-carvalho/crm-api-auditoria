@@ -2,10 +2,10 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Lead;
 use App\Services\CrmApiClient;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
-use App\Models\Lead;
 
 class StoreLeadRequest extends FormRequest
 {
