@@ -175,3 +175,21 @@ Também mediria a listagem com um volume combinado com o time, olharia consultas
 5. `873c529` — fix: criação só com dados validados, atualização por lista de campos, e-mail único ignorando o próprio lead, edição de lead fechado sem exigir status no corpo, e status da criação restrito a `Lead::STATUSES`, com os testes correspondentes.
 6. `0caeee8` — style: aplicar padrão Pint nos arquivos alterados. Formatação de `LeadController.php`, `StoreLeadRequest.php` e `LeadApiTest.php`, sem alteração de lógica.
 7. `65e23c4` — docs: adicionar relatório de auditoria técnica.
+
+## Validação adicional da integração com o CRM central
+
+Após receber as credenciais e a URL oficial da API, foi realizado um teste de integração com o ambiente disponibilizado pela empresa.
+
+### Resultados
+
+- Autenticação com a API externa realizada com sucesso.
+- 100 leads recebidos na primeira execução de `php artisan leads:sync`.
+- 100 registros persistidos no banco SQLite.
+- Os 100 registros apresentaram `external_id` preenchido.
+- Uma segunda execução da sincronização manteve o total de registros em 100, sem aumento da quantidade.
+
+### Observações
+
+O teste demonstra que a integração funcionou com as credenciais e o ambiente disponibilizados, e que a segunda execução não gerou novos registros nesse cenário.
+
+Essa validação não comprova, isoladamente, o comportamento da sincronização diante de alterações nos dados externos, falhas durante o processamento ou execuções concorrentes.
