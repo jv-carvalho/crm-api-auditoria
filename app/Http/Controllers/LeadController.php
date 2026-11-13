@@ -58,7 +58,7 @@ class LeadController extends Controller
 
     public function store(StoreLeadRequest $request)
     {
-        $lead = Lead::create($request->all());
+        $lead = Lead::create($request->validated());
 
         return response()->json($lead, 201);
     }
@@ -73,7 +73,7 @@ class LeadController extends Controller
 
         $request->validate([
             'name' => 'sometimes|required|string|max:255',
-            'email' => 'sometimes|required|email|unique:leads,email',
+            'email' => 'sometimes|required|email|unique:leads,email,' . $lead->id,
             'phone' => 'nullable|string',
             'company' => 'nullable|string',
             'source' => 'sometimes|string',
@@ -81,12 +81,26 @@ class LeadController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        // Leads ganhos ou perdidos não podem mais mudar de status
-        if ($lead->status != $request->status && in_array($lead->status, ['WON', 'LOST'])) {
-            return response()->json(['message' => 'Não é possível alterar o status de um lead finalizado'], 400);
+        // Leads ganhos ou perdidos não podem mais mudar de status.
+        if (
+            $request->has('status')
+            && $lead->status !== $request->status
+            && $lead->isClosed()
+        ) {
+            return response()->json([
+                'message' => 'Não é possível alterar o status de um lead finalizado',
+            ], 400);
         }
 
-        $lead->update($request->all());
+        $lead->update($request->only([
+            'name',
+            'email',
+            'phone',
+            'company',
+            'source',
+            'status',
+            'notes',
+        ]));
 
         return response()->json($lead);
     }

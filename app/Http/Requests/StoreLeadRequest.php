@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use App\Services\CrmApiClient;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use App\Models\Lead;
 
 class StoreLeadRequest extends FormRequest
 {
@@ -34,7 +35,7 @@ class StoreLeadRequest extends FormRequest
             'phone' => 'nullable|string|max:20',
             'company' => 'nullable|string|max:255',
             'source' => ['required', Rule::in($sources)],
-            'status' => 'nullable|string',
+            'status' => ['sometimes', Rule::in(Lead::STATUSES)],
             'notes' => 'nullable|string',
         ];
     }

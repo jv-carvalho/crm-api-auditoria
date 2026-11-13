@@ -141,6 +141,28 @@ class LeadApiTest extends TestCase
         ]);
     }
 
+    public function test_create_lead_does_not_allow_internal_fields()
+    {
+        $this->fakeSources();
+
+        $response = $this->postJson('/api/leads', [
+            'name' => 'Carlos Lima',
+            'email' => 'carlos.lima@example.com',
+            'source' => 'WEBSITE',
+            'external_id' => 999,
+            'raw_payload' => '{"malicious": true}',
+            'synced_at' => '2026-01-01 00:00:00',
+        ]);
+
+        $response->assertStatus(201);
+
+        $this->assertDatabaseHas('leads', [
+            'email' => 'carlos.lima@example.com',
+            'external_id' => null,
+            'raw_payload' => null,
+        ]);
+    }
+
     public function test_create_lead_requires_name()
     {
         $this->fakeSources();
@@ -167,6 +189,56 @@ class LeadApiTest extends TestCase
         $response->assertJsonValidationErrors('source');
     }
 
+    public function test_create_lead_rejects_invalid_status()
+    {
+        $this->fakeSources();
+
+        $response = $this->postJson('/api/leads', [
+            'name' => 'Status Invalido',
+            'email' => 'status.invalido@example.com',
+            'source' => 'WEBSITE',
+            'status' => 'INVALIDO',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('status');
+        $this->assertDatabaseCount('leads', 0);
+    }
+
+    public function test_create_lead_accepts_valid_status()
+    {
+        $this->fakeSources();
+
+        $response = $this->postJson('/api/leads', [
+            'name' => 'Lead Ganho',
+            'email' => 'lead.ganho@example.com',
+            'source' => 'WEBSITE',
+            'status' => 'WON',
+        ]);
+
+        $response->assertStatus(201);
+        $this->assertDatabaseHas('leads', [
+            'email' => 'lead.ganho@example.com',
+            'status' => 'WON',
+        ]);
+    }
+
+    public function test_create_lead_rejects_null_status()
+    {
+        $this->fakeSources();
+
+        $response = $this->postJson('/api/leads', [
+            'name' => 'Status Nulo',
+            'email' => 'status.nulo@example.com',
+            'source' => 'WEBSITE',
+            'status' => null,
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('status');
+        $this->assertDatabaseCount('leads', 0);
+    }
+
     public function test_can_update_lead()
     {
         $lead = Lead::factory()->create(['status' => 'NEW']);
@@ -180,6 +252,51 @@ class LeadApiTest extends TestCase
         $this->assertDatabaseHas('leads', [
             'id' => $lead->id,
             'status' => 'CONTACTED',
+        ]);
+    }
+
+    public function test_update_lead_does_not_allow_internal_fields()
+    {
+        $lead = Lead::factory()->create([
+            'status' => 'NEW',
+            'external_id' => 10,
+            'raw_payload' => '{"original": true}',
+        ]);
+
+        $response = $this->putJson('/api/leads/' . $lead->id, [
+            'name' => 'Nome Atualizado',
+            'external_id' => 999,
+            'raw_payload' => '{"malicious": true}',
+            'synced_at' => '2026-01-01 00:00:00',
+        ]);
+
+        $response->assertStatus(200);
+
+        $this->assertDatabaseHas('leads', [
+            'id' => $lead->id,
+            'name' => 'Nome Atualizado',
+            'external_id' => 10,
+            'raw_payload' => '{"original": true}',
+        ]);
+    }
+
+    public function test_closed_lead_can_be_updated_without_changing_status()
+    {
+        $lead = Lead::factory()->create([
+            'status' => 'WON',
+            'notes' => 'Observação anterior',
+        ]);
+
+        $response = $this->putJson('/api/leads/' . $lead->id, [
+            'notes' => 'Nova observação',
+        ]);
+
+        $response->assertStatus(200);
+
+        $this->assertDatabaseHas('leads', [
+            'id' => $lead->id,
+            'status' => 'WON',
+            'notes' => 'Nova observação',
         ]);
     }
 
