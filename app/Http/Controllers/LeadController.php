@@ -22,9 +22,13 @@ class LeadController extends Controller
         }
 
         if ($request->has('search')) {
-            $query->where('name', 'like', '%' . $request->search . '%')
-                ->orWhere('email', 'like', '%' . $request->search . '%')
-                ->orWhere('company', 'like', '%' . $request->search . '%');
+            $search = '%' . $request->search . '%';
+
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', $search)
+                    ->orWhere('email', 'like', $search)
+                    ->orWhere('company', 'like', $search);
+            });
         }
 
         $leads = $query->orderBy('created_at', 'desc')->get();

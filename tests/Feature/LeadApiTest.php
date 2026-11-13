@@ -74,11 +74,42 @@ class LeadApiTest extends TestCase
         $response->assertStatus(200);
     }
 
+    public function test_search_respects_status_filter()
+    {
+        Lead::factory()->create()->forceFill([
+            'name' => 'João Pereira',
+            'email' => 'joao@example.com',
+            'status' => 'QUALIFIED',
+        ])->save();
+
+        Lead::factory()->create()->forceFill([
+            'name' => 'Maria Souza',
+            'email' => 'maria@example.com',
+            'company' => 'Joao Consultoria',
+            'status' => 'NEW',
+        ])->save();
+
+        Lead::factory()->create()->forceFill([
+            'name' => 'Carlos Lima',
+            'email' => 'carlos@example.com',
+            'company' => 'Joao Engenharia',
+            'status' => 'QUALIFIED',
+        ])->save();
+
+        $response = $this->getJson('/api/leads?status=QUALIFIED&search=joao');
+
+        $response->assertStatus(200);
+        $response->assertJsonCount(2, 'data');
+        $response->assertJsonFragment(['name' => 'João Pereira']);
+        $response->assertJsonFragment(['name' => 'Carlos Lima']);
+        $response->assertJsonMissing(['name' => 'Maria Souza']);
+    }
+
     public function test_can_show_lead()
     {
         $lead = Lead::factory()->create();
 
-        $response = $this->getJson('/api/leads/'.$lead->id);
+        $response = $this->getJson('/api/leads/' . $lead->id);
 
         $response->assertStatus(200);
         $response->assertJsonFragment(['email' => $lead->email]);
@@ -140,7 +171,7 @@ class LeadApiTest extends TestCase
     {
         $lead = Lead::factory()->create(['status' => 'NEW']);
 
-        $response = $this->putJson('/api/leads/'.$lead->id, [
+        $response = $this->putJson('/api/leads/' . $lead->id, [
             'status' => 'CONTACTED',
             'notes' => 'Primeiro contato realizado por telefone.',
         ]);
@@ -156,7 +187,7 @@ class LeadApiTest extends TestCase
     {
         $lead = Lead::factory()->create();
 
-        $response = $this->deleteJson('/api/leads/'.$lead->id);
+        $response = $this->deleteJson('/api/leads/' . $lead->id);
 
         $response->assertStatus(200);
     }
