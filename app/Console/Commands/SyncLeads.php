@@ -30,9 +30,16 @@ class SyncLeads extends Command
     public function handle()
     {
         $client = new CrmApiClient();
-        $leads = $client->getLeads();
 
-        $this->info('Leads recebidos: ' . count($leads));
+        try {
+            $leads = $client->getLeads();
+        } catch (\Throwable $exception) {
+            $this->error($exception->getMessage());
+
+            return Command::FAILURE;
+        }
+
+        $this->info('Leads recebidos: '.count($leads));
 
         foreach ($leads as $item) {
             $lead = Lead::firstOrNew(['external_id' => $item['id']]);

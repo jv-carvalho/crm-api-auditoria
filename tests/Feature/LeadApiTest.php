@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Lead;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -384,32 +385,30 @@ class LeadApiTest extends TestCase
     public function test_sync_command_imports_leads_from_crm()
     {
         Http::fake([
-            '*/leads*' => Http::response([
-                'data' => [
-                    [
-                        'id' => 10,
-                        'name' => 'Fernanda Alves',
-                        'email' => 'fernanda.alves@example.com',
-                        'phone' => '11988887777',
-                        'company' => null,
-                        'source' => 'INSTAGRAM',
-                        'status' => 'NEW',
-                        'notes' => null,
-                        'created_at' => '2026-05-10T14:00:00Z',
-                    ],
-                    [
-                        'id' => 11,
-                        'name' => 'Rafael Gomes',
-                        'email' => 'rafael.gomes@example.com',
-                        'phone' => '(21) 3333-4444',
-                        'company' => 'Gomes Engenharia',
-                        'source' => 'REFERRAL',
-                        'status' => 'QUALIFIED',
-                        'notes' => 'Indicado pelo cliente Padaria Pão Dourado.',
-                        'created_at' => '2026-05-12T09:30:00Z',
-                    ],
+            '*/leads*' => Http::response($this->crmPage([
+                [
+                    'id' => 10,
+                    'name' => 'Fernanda Alves',
+                    'email' => 'fernanda.alves@example.com',
+                    'phone' => '11988887777',
+                    'company' => null,
+                    'source' => 'INSTAGRAM',
+                    'status' => 'NEW',
+                    'notes' => null,
+                    'created_at' => '2026-05-10T14:00:00Z',
                 ],
-            ]),
+                [
+                    'id' => 11,
+                    'name' => 'Rafael Gomes',
+                    'email' => 'rafael.gomes@example.com',
+                    'phone' => '(21) 3333-4444',
+                    'company' => 'Gomes Engenharia',
+                    'source' => 'REFERRAL',
+                    'status' => 'QUALIFIED',
+                    'notes' => 'Indicado pelo cliente Padaria Pão Dourado.',
+                    'created_at' => '2026-05-12T09:30:00Z',
+                ],
+            ], 1, 1)),
         ]);
 
         $this->artisan('leads:sync')->assertExitCode(0);
@@ -427,21 +426,19 @@ class LeadApiTest extends TestCase
         ]);
 
         Http::fake([
-            '*/leads*' => Http::response([
-                'data' => [
-                    [
-                        'id' => 10,
-                        'name' => 'Fernanda Alves',
-                        'email' => 'fernanda.alves@example.com',
-                        'phone' => '11988887777',
-                        'company' => 'Alves Consultoria',
-                        'source' => 'INSTAGRAM',
-                        'status' => 'NEW',
-                        'notes' => null,
-                        'created_at' => '2026-05-10T14:00:00Z',
-                    ],
+            '*/leads*' => Http::response($this->crmPage([
+                [
+                    'id' => 10,
+                    'name' => 'Fernanda Alves',
+                    'email' => 'fernanda.alves@example.com',
+                    'phone' => '11988887777',
+                    'company' => 'Alves Consultoria',
+                    'source' => 'INSTAGRAM',
+                    'status' => 'NEW',
+                    'notes' => null,
+                    'created_at' => '2026-05-10T14:00:00Z',
                 ],
-            ]),
+            ], 1, 1)),
         ]);
 
         $this->artisan('leads:sync')->assertExitCode(0);
@@ -453,14 +450,240 @@ class LeadApiTest extends TestCase
         $this->assertDatabaseCount('leads', 1);
     }
 
-    public function test_sync_command_does_not_fail_when_crm_is_unavailable()
+    public function test_sync_command_fails_when_crm_is_unavailable()
     {
         Http::fake([
             '*' => Http::response(['error' => 'internal_error'], 500),
         ]);
 
-        $this->artisan('leads:sync')->assertExitCode(0);
+        $this->artisan('leads:sync')
+            ->assertExitCode(1)
+            ->doesntExpectOutput('Sincronização concluída.');
 
         $this->assertDatabaseCount('leads', 0);
+    }
+
+    public function test_sync_imports_leads_from_two_pages()
+    {
+        $this->fakeCrmPages([
+            1 => [$this->crmLead(10, 'pagina1@example.com')],
+            2 => [$this->crmLead(11, 'pagina2@example.com')],
+        ]);
+
+        $this->artisan('leads:sync')->assertExitCode(0);
+
+        $this->assertDatabaseCount('leads', 2);
+        $this->assertDatabaseHas('leads', ['external_id' => 10, 'email' => 'pagina1@example.com']);
+        $this->assertDatabaseHas('leads', ['external_id' => 11, 'email' => 'pagina2@example.com']);
+        $this->assertCrmPageRequests(2);
+    }
+
+    public function test_sync_imports_leads_from_three_pages()
+    {
+        $this->fakeCrmPages([
+            1 => [$this->crmLead(10, 'pagina1@example.com')],
+            2 => [$this->crmLead(11, 'pagina2@example.com')],
+            3 => [$this->crmLead(12, 'pagina3@example.com')],
+        ]);
+
+        $this->artisan('leads:sync')->assertExitCode(0);
+
+        $this->assertDatabaseCount('leads', 3);
+        $this->assertDatabaseHas('leads', ['external_id' => 12, 'email' => 'pagina3@example.com']);
+        $this->assertCrmPageRequests(3);
+    }
+
+    public function test_sync_sends_page_and_per_page_on_each_request()
+    {
+        $this->fakeCrmPages([
+            1 => [$this->crmLead(10, 'pagina1@example.com')],
+            2 => [$this->crmLead(11, 'pagina2@example.com')],
+        ]);
+
+        $this->artisan('leads:sync')->assertExitCode(0);
+
+        $this->assertCrmPageRequests(2);
+    }
+
+    public function test_sync_fails_when_second_page_returns_http_error()
+    {
+        Http::fake(function ($request) {
+            $page = (int) $request->data()['page'];
+
+            if ($page === 1) {
+                return Http::response($this->crmPage([
+                    $this->crmLead(10, 'pagina1@example.com'),
+                ], 1, 2));
+            }
+
+            return Http::response(['error' => 'internal_error'], 500);
+        });
+
+        $this->artisan('leads:sync')
+            ->assertExitCode(1)
+            ->doesntExpectOutput('Sincronização concluída.');
+
+        $this->assertDatabaseMissing('leads', ['email' => 'pagina1@example.com']);
+        $this->assertDatabaseCount('leads', 0);
+    }
+
+    public function test_sync_does_not_persist_partial_pages_when_collection_fails()
+    {
+        Lead::factory()->create([
+            'external_id' => 1,
+            'email' => 'local@example.com',
+            'status' => 'PROPOSAL',
+            'notes' => 'Nota local.',
+        ]);
+
+        Http::fake(function ($request) {
+            $page = (int) $request->data()['page'];
+
+            if ($page === 1) {
+                return Http::response($this->crmPage([
+                    $this->crmLead(10, 'pagina1@example.com'),
+                ], 1, 2));
+            }
+
+            return Http::response(['error' => 'internal_error'], 500);
+        });
+
+        $this->artisan('leads:sync')->assertExitCode(1);
+
+        $this->assertDatabaseCount('leads', 1);
+        $this->assertDatabaseHas('leads', [
+            'external_id' => 1,
+            'status' => 'PROPOSAL',
+            'notes' => 'Nota local.',
+        ]);
+        $this->assertDatabaseMissing('leads', ['email' => 'pagina1@example.com']);
+    }
+
+    public function test_sync_fails_when_crm_connection_fails()
+    {
+        Http::fake(function () {
+            throw new ConnectionException('Falha de conexão com o CRM.');
+        });
+
+        $this->artisan('leads:sync')
+            ->assertExitCode(1)
+            ->expectsOutput('Falha de conexão ao buscar a página 1 do CRM.')
+            ->doesntExpectOutput('Sincronização concluída.');
+
+        $this->assertDatabaseCount('leads', 0);
+    }
+
+    public function test_sync_fails_when_response_has_no_data()
+    {
+        Http::fake([
+            '*' => Http::response([
+                'meta' => ['current_page' => 1, 'last_page' => 1],
+            ]),
+        ]);
+
+        $this->artisan('leads:sync')
+            ->assertExitCode(1)
+            ->expectsOutput('Resposta inválida ao buscar a página 1 do CRM: campo data ausente.')
+            ->doesntExpectOutput('Sincronização concluída.');
+    }
+
+    public function test_sync_fails_when_response_has_no_last_page()
+    {
+        Http::fake([
+            '*' => Http::response([
+                'data' => [],
+                'meta' => ['current_page' => 1],
+            ]),
+        ]);
+
+        $this->artisan('leads:sync')
+            ->assertExitCode(1)
+            ->expectsOutput('Resposta inválida ao buscar a página 1 do CRM: campo meta.last_page ausente.')
+            ->doesntExpectOutput('Sincronização concluída.');
+    }
+
+    public function test_sync_fails_when_last_page_is_invalid()
+    {
+        foreach ([1.5, 'abc', 0, -1] as $lastPage) {
+            Http::fake([
+                '*' => Http::response([
+                    'data' => [],
+                    'meta' => [
+                        'current_page' => 1,
+                        'last_page' => $lastPage,
+                    ],
+                ]),
+            ]);
+
+            $this->artisan('leads:sync')
+                ->assertExitCode(1)
+                ->expectsOutput('Resposta inválida ao buscar a página 1 do CRM: meta.last_page inválido.');
+
+            $this->assertDatabaseCount('leads', 0);
+        }
+    }
+
+    /**
+     * @param  array<int, array<int, array<string, mixed>>>  $pages
+     */
+    private function fakeCrmPages(array $pages): void
+    {
+        $lastPage = max(array_keys($pages));
+
+        Http::fake(function ($request) use ($pages, $lastPage) {
+            $page = (int) $request->data()['page'];
+
+            return Http::response($this->crmPage($pages[$page] ?? [], $page, $lastPage));
+        });
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     * @return array<string, mixed>
+     */
+    private function crmLead(int $id, string $email, array $overrides = []): array
+    {
+        return array_merge([
+            'id' => $id,
+            'name' => 'Lead '.$id,
+            'email' => $email,
+            'phone' => '11988887777',
+            'company' => 'Empresa '.$id,
+            'source' => 'WEBSITE',
+            'status' => 'NEW',
+            'notes' => null,
+            'created_at' => '2026-05-10T14:00:00Z',
+        ], $overrides);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $leads
+     * @return array<string, mixed>
+     */
+    private function crmPage(array $leads, int $page, int $lastPage): array
+    {
+        return [
+            'data' => $leads,
+            'meta' => [
+                'current_page' => $page,
+                'per_page' => 100,
+                'total' => count($leads),
+                'last_page' => $lastPage,
+            ],
+        ];
+    }
+
+    private function assertCrmPageRequests(int $pages): void
+    {
+        $recorded = Http::recorded();
+
+        $this->assertCount($pages, $recorded);
+
+        foreach (range(1, $pages) as $page) {
+            $query = $recorded[$page - 1][0]->data();
+
+            $this->assertSame($page, $query['page']);
+            $this->assertSame(100, $query['per_page']);
+        }
     }
 }
