@@ -174,3 +174,4 @@ Também mediria a listagem com um volume combinado com o time, olharia consultas
 4. `72b0b9f` — fix: agrupamento da busca por nome, e-mail e empresa, com teste de que o filtro de status continua valendo.
 5. `873c529` — fix: criação só com dados validados, atualização por lista de campos, e-mail único ignorando o próprio lead, edição de lead fechado sem exigir status no corpo, e status da criação restrito a `Lead::STATUSES`, com os testes correspondentes.
 6. `0caeee8` — style: aplicar padrão Pint nos arquivos alterados. Formatação de `LeadController.php`, `StoreLeadRequest.php` e `LeadApiTest.php`, sem alteração de lógica.
+7. `65e23c4` — docs: adicionar relatório de auditoria técnica.
