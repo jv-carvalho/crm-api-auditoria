@@ -623,6 +623,137 @@ class LeadApiTest extends TestCase
         }
     }
 
+    public function test_sync_fails_when_lead_has_no_id()
+    {
+        $lead = $this->crmLead(10, 'valido@example.com');
+        unset($lead['id']);
+
+        $this->fakeCrmPages([
+            1 => [$lead],
+        ]);
+
+        $this->artisan('leads:sync')
+            ->assertExitCode(1)
+            ->expectsOutputToContain('Campos inválidos: id');
+
+        $this->assertDatabaseCount('leads', 0);
+    }
+
+    public function test_sync_fails_when_lead_has_no_name()
+    {
+        $lead = $this->crmLead(10, 'valido@example.com');
+        unset($lead['name']);
+
+        $this->fakeCrmPages([
+            1 => [$lead],
+        ]);
+
+        $this->artisan('leads:sync')
+            ->assertExitCode(1)
+            ->expectsOutputToContain('Campos inválidos: name');
+
+        $this->assertDatabaseCount('leads', 0);
+    }
+
+    public function test_sync_fails_when_lead_has_invalid_email()
+    {
+        $this->fakeCrmPages([
+            1 => [
+                $this->crmLead(10, 'email-invalido'),
+            ],
+        ]);
+
+        $this->artisan('leads:sync')
+            ->assertExitCode(1)
+            ->expectsOutputToContain('Campos inválidos: email');
+
+        $this->assertDatabaseCount('leads', 0);
+    }
+
+    public function test_sync_fails_when_lead_has_invalid_status()
+    {
+        $this->fakeCrmPages([
+            1 => [
+                $this->crmLead(10, 'status@example.com', [
+                    'status' => 'INVALID',
+                ]),
+            ],
+        ]);
+
+        $this->artisan('leads:sync')
+            ->assertExitCode(1)
+            ->expectsOutputToContain('Campos inválidos: status');
+
+        $this->assertDatabaseCount('leads', 0);
+    }
+
+    public function test_sync_fails_when_lead_is_not_an_array()
+    {
+        $this->fakeCrmPages([
+            1 => [
+                'registro-invalido',
+            ],
+        ]);
+
+        $this->artisan('leads:sync')
+            ->assertExitCode(1)
+            ->expectsOutputToContain('o registro não é um objeto válido');
+
+        $this->assertDatabaseCount('leads', 0);
+    }
+
+    public function test_sync_does_not_persist_any_lead_when_one_record_is_invalid()
+    {
+        $this->fakeCrmPages([
+            1 => [
+                $this->crmLead(10, 'valido@example.com'),
+                $this->crmLead(11, 'email-invalido'),
+            ],
+        ]);
+
+        $this->artisan('leads:sync')
+            ->assertExitCode(1)
+            ->expectsOutputToContain('Campos inválidos: email');
+
+        $this->assertDatabaseCount('leads', 0);
+    }
+
+    public function test_sync_rolls_back_all_leads_when_persistence_fails()
+    {
+        $this->fakeCrmPages([
+            1 => [
+                $this->crmLead(10, 'primeiro@example.com'),
+                $this->crmLead(11, 'segundo@example.com'),
+            ],
+        ]);
+
+        $created = 0;
+
+        \Illuminate\Support\Facades\Event::listen(
+            'eloquent.creating: '.Lead::class,
+            function () use (&$created) {
+                $created++;
+
+                if ($created === 2) {
+                    throw new \RuntimeException('Falha simulada durante a gravação.');
+                }
+            }
+        );
+
+        try {
+            $this->artisan('leads:sync');
+
+            $this->fail('Era esperada uma exceção durante a gravação.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame(
+                'Falha simulada durante a gravação.',
+                $exception->getMessage()
+            );
+        }
+
+        $this->assertDatabaseCount('leads', 0);
+    }
+
     /**
      * @param  array<int, array<int, array<string, mixed>>>  $pages
      */
