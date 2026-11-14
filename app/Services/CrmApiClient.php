@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\CrmApiException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -122,10 +123,49 @@ class CrmApiClient
 
     public function getSources(): array
     {
-        $response = Http::withToken(config('services.crm_api.token'))
-            ->acceptJson()
-            ->get(config('services.crm_api.url').'/sources');
+        try {
+            $response = Http::withToken(config('services.crm_api.token'))
+                ->acceptJson()
+                ->get(config('services.crm_api.url').'/sources');
+        } catch (ConnectionException $exception) {
+            throw new CrmApiException(
+                'Não foi possível conectar ao CRM.',
+                0,
+                $exception
+            );
+        }
 
-        return collect($response->json('data'))->pluck('code')->all();
+        $payload = $response->json();
+
+        if (! $response->successful() || ! is_array($payload)) {
+            throw new CrmApiException(
+                'Não foi possível consultar as origens do CRM.'
+            );
+        }
+
+        if (! isset($payload['data']) || ! is_array($payload['data'])) {
+            throw new CrmApiException(
+                'O CRM retornou uma lista de origens inválida.'
+            );
+        }
+
+        $sources = [];
+
+        foreach ($payload['data'] as $source) {
+            if (
+                ! is_array($source)
+                || ! isset($source['code'])
+                || ! is_string($source['code'])
+                || trim($source['code']) === ''
+            ) {
+                throw new CrmApiException(
+                    'O CRM retornou uma origem inválida.'
+                );
+            }
+
+            $sources[] = $source['code'];
+        }
+
+        return $sources;
     }
 }

@@ -34,6 +34,13 @@ class Handler extends ExceptionHandler
      */
     public function register()
     {
+        $this->renderable(function (CrmApiException $exception, $request) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => 'Serviço de CRM temporariamente indisponível.',
+                ], 503);
+            }
+        });
         $this->reportable(function (Throwable $e) {
             //
         });

@@ -42,6 +42,108 @@ class LeadApiTest extends TestCase
         $response->assertJsonCount(3, 'data');
     }
 
+    public function test_lead_listing_does_not_expose_internal_sync_fields()
+    {
+        Lead::factory()->create([
+            'external_id' => 123,
+            'raw_payload' => '{"internal": true}',
+            'synced_at' => now(),
+        ]);
+
+        $response = $this->getJson('/api/leads');
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('data.0.external_id', 123);
+        $response->assertJsonMissingPath('data.0.raw_payload');
+        $response->assertJsonMissingPath('data.0.synced_at');
+    }
+
+    public function test_create_lead_returns_503_when_crm_sources_are_unavailable()
+    {
+        Http::fake([
+            '*/sources' => Http::response([], 503),
+        ]);
+
+        $response = $this->postJson('/api/leads', [
+            'name' => 'Carlos Lima',
+            'email' => 'carlos.lima@example.com',
+            'source' => 'WEBSITE',
+        ]);
+
+        $response->assertStatus(503);
+
+        $this->assertDatabaseMissing('leads', [
+            'email' => 'carlos.lima@example.com',
+        ]);
+    }
+
+    public function test_create_lead_returns_503_when_crm_connection_fails()
+    {
+        Http::fake([
+            '*/sources' => function () {
+                throw new \Illuminate\Http\Client\ConnectionException(
+                    'Connection refused'
+                );
+            },
+        ]);
+
+        $response = $this->postJson('/api/leads', [
+            'name' => 'Carlos Lima',
+            'email' => 'carlos.lima@example.com',
+            'source' => 'WEBSITE',
+        ]);
+
+        $response->assertStatus(503);
+
+        $this->assertDatabaseMissing('leads', [
+            'email' => 'carlos.lima@example.com',
+        ]);
+    }
+
+    public function test_create_lead_returns_503_when_crm_sources_response_is_invalid()
+    {
+        Http::fake([
+            '*/sources' => Http::response([
+                'unexpected' => 'structure',
+            ], 200),
+        ]);
+
+        $response = $this->postJson('/api/leads', [
+            'name' => 'Carlos Lima',
+            'email' => 'carlos.lima@example.com',
+            'source' => 'WEBSITE',
+        ]);
+
+        $response->assertStatus(503);
+
+        $this->assertDatabaseMissing('leads', [
+            'email' => 'carlos.lima@example.com',
+        ]);
+    }
+
+    public function test_create_lead_returns_503_when_crm_source_item_is_invalid()
+    {
+        Http::fake([
+            '*/sources' => Http::response([
+                'data' => [
+                    ['label' => 'Site'],
+                ],
+            ], 200),
+        ]);
+
+        $response = $this->postJson('/api/leads', [
+            'name' => 'Carlos Lima',
+            'email' => 'carlos.lima@example.com',
+            'source' => 'WEBSITE',
+        ]);
+
+        $response->assertStatus(503);
+
+        $this->assertDatabaseMissing('leads', [
+            'email' => 'carlos.lima@example.com',
+        ]);
+    }
+
     public function test_can_filter_leads_by_status()
     {
         Lead::factory()->count(2)->create(['status' => 'QUALIFIED']);
