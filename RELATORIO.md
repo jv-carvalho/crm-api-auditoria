@@ -2,7 +2,7 @@
 
 ## 1. Objetivo
 
-Esta auditoria revisou o LeadCRM, API Laravel 9 usada pelo time comercial para consultar e atualizar leads importados de um CRM central. O código recebido no commit `165c2ed` foi comparado com as correções funcionais até `873c529`. O commit `0caeee8` apenas formata arquivos já alterados nessa auditoria.
+Esta auditoria revisou o LeadCRM, API Laravel 9 usada pelo time comercial para consultar e atualizar leads importados de um CRM central. O código recebido no commit `165c2ed` foi comparado com as correções funcionais até `873c529`. O commit `0caeee8` apenas formata arquivos já alterados nessa auditoria. O trabalho seguinte na branch `melhorias-auditoria`, até `c44c193`, permanece no Laravel 9.52.22 exigido pelo desafio.
 
 O foco foi segurança da escrita, integridade dos dados gravados, validação de entrada, qualidade estática e manutenção. A leitura das rotas, o contrato descrito no `README.md` e o comportamento da sincronização foram usados para separar defeito confirmado no código de decisão que depende de regra de negócio ou de ambiente.
 
@@ -46,9 +46,9 @@ Foi corrigido em `873c529` para `sometimes` e `Rule::in(Lead::STATUSES)`. Status
 
 ### `raw_payload` na listagem
 
-`index` serializa a coleção Eloquent. `Lead` não define `$hidden`. A resposta inclui os atributos do model, entre eles `raw_payload` e `synced_at`, quando existem. `show` usa `LeadResource` e não devolve `raw_payload`.
+`index` serializava a coleção Eloquent. `Lead` não define `$hidden`. A resposta incluía os atributos do model, entre eles `raw_payload` e `synced_at`, quando existiam. `show` já usava `LeadResource` e não devolvia `raw_payload`.
 
-O conteúdo de `raw_payload` é o JSON recebido no sync (`SyncLeads`). A exposição do campo na listagem é comportamento do código. O quanto isso revela dados do CRM depende do que a API externa tiver enviado. Não foi alterado.
+O conteúdo de `raw_payload` é o JSON recebido no sync (`SyncLeads`). A listagem passou a usar `LeadResource` em `17e6319`. Criação e atualização ainda devolvem o model completo.
 
 ### Listagem sem paginação
 
@@ -56,7 +56,7 @@ O conteúdo de `raw_payload` é o JSON recebido no sync (`SyncLeads`). A exposi�
 
 ### Leitura e escrita com proteção diferente
 
-`routes/api.php` deixa `GET /api/leads` e `GET /api/leads/{id}` sem `api.key`. `POST`, `PUT` e `DELETE` exigem o middleware. O `README.md` documenta essa diferença. Quem alcança o host lê nome, e-mail, telefone, empresa, origem, status e observações. Se a API fica só na rede interna, o alcance é outro. Isso não foi tratado como falha a corrigir sem alinhamento.
+Até `f459347`, `routes/api.php` deixava `GET /api/leads` e `GET /api/leads/{id}` sem `api.key`. `POST`, `PUT` e `DELETE` já exigiam o middleware. Quem alcançava o host lia nome, e-mail, telefone, empresa, origem, status e observações. A leitura passou a usar o mesmo middleware.
 
 ### CORS com origem `*`
 
@@ -68,11 +68,11 @@ A migration `2023_06_02_093011_add_sync_columns_to_leads_table` cria `external_i
 
 ### Dependências
 
-`composer audit`, executado sobre o `composer.lock` atual, reportou 24 advisories em 8 pacotes: `laravel/framework` (6), `symfony/http-foundation` (5), `symfony/http-kernel` (1), `symfony/mailer` (1), `symfony/mime` (2), `symfony/process` (1), `symfony/routing` (3) e `symfony/yaml` (5). O framework instalado é o 9.52.22, dentro de várias faixas afetadas.
+`composer audit --locked`, executado com o Composer 2.10.3 sobre o `composer.lock` atual, reportou 25 advisories em 8 pacotes: `laravel/framework` (7), `symfony/http-foundation` (5), `symfony/http-kernel` (1), `symfony/mailer` (1), `symfony/mime` (2), `symfony/process` (1), `symfony/routing` (3) e `symfony/yaml` (5). O comando terminou com código 1. O framework instalado é o 9.52.22. Os sete avisos do framework não têm correção nessa linha. Os 18 do Symfony estão nas versões 6.0.19 e 6.0.20 travadas pelo lock. A decisão, por causa do desafio, é permanecer no Laravel 9.52.22 e não migrar para 10, 11 ou 12. A subida do Symfony para 6.4, compatível com `^6.0`, foi avaliada e ainda não foi aplicada.
 
 Dois pacotes estão abandonados: `fruitcake/laravel-cors`, sem substituto indicado pelo Composer, e `nunomaduro/larastan`, com sugestão `larastan/larastan`.
 
-Esses avisos são do grafo de dependências. Não significam, por si, que cada falha seja alcançável nesta API. O CVE-2026-114509, por exemplo, está no audit porque o `TokenGuard` do framework entra na faixa afetada. `config/auth.php` só registra o guard `web` com driver `session`. O guard `sanctum` é registrado pelo pacote Sanctum com driver próprio. Nenhum guard usa `driver` `token`, então esse caminho não é usado pelas rotas atuais.
+O CVE-2026-114509, crítico, está no audit porque o `TokenGuard` do framework entra na faixa `<10.50.4`. `config/auth.php` só registra o guard `web` com driver `session`. O guard `sanctum` é registrado pelo pacote Sanctum com driver próprio. Nenhum guard usa `driver` `token`. A presença do advisory no Composer não significa, por si só, que a vulnerabilidade seja explorável pelas rotas atuais. O comando local não usou `--ignore`.
 
 ## 3. Correções implementadas
 
@@ -106,17 +106,43 @@ O 400 só ocorre se `status` veio na requisição, é diferente do atual e `isCl
 
 A regra `sometimes` com `Rule::in(Lead::STATUSES)` recusa texto fora do funil e `null` explícito. Os testes `test_create_lead_rejects_invalid_status`, `test_create_lead_accepts_valid_status` e `test_create_lead_rejects_null_status` cobrem `INVALIDO` (422), `WON` (201) e `null` (422).
 
+### Sincronização com paginação, validação e transação
+
+`CrmApiClient::getLeads` percorre `page` até `meta.last_page`, com `per_page` 100. Rejeita `last_page` acima de 1000, `last_page` que muda nas páginas seguintes e `current_page` diferente da página pedida. Falha de HTTP, conexão ou payload inválido interrompe a coleta e lança exceção. `SyncLeads` só grava depois de validar o lote inteiro: registro que não é array, `id`, `name`, `email`, `source`, `status` em `Lead::STATUSES` e `created_at`. A gravação fica em `DB::transaction`. Se a coleta ou a validação falha, o comando imprime o erro e devolve `Command::FAILURE`, sem persistir parte do lote. Status e notas de um lead já existente continuam locais.
+
+### Leitura com a mesma API Key
+
+`GET /api/leads` e `GET /api/leads/{id}` entraram no grupo `api.key` em `f459347`. Sem chave ou com chave incorreta a resposta é 401. Com a chave de teste, listagem e detalhe seguem 200. O `README.md` passou a exigir `X-Api-Key` nesses dois métodos.
+
+### Limites de leitura e de escrita
+
+`RouteServiceProvider` registra um único limitador `api`, já usado pelo grupo `api` em `throttle:api`. `GET` conta em `read:{identidade}`, 60 por minuto. `POST`, `PUT`, `PATCH` e `DELETE` contam em `write:{identidade}`, 30 por minuto. A identidade é o id do usuário quando já existe, senão o IP. Esgotar a escrita não consome a leitura. O limite roda antes de `api.key`: a 31ª escrita sem chave responde 429.
+
+### Listagem sem colunas internas
+
+`index` monta a resposta com `LeadResource`. `raw_payload` e `synced_at` não saem na listagem nem no detalhe. `external_id` continua no resource. `store` e `update` ainda respondem com o model.
+
+### Cobertura dos endpoints de escrita
+
+`c44c193` acrescenta três testes em `LeadApiTest`:
+
+- `test_closed_lead_rejects_status_change`: `PUT` que troca o status de um lead `WON` ou `LOST` responde 400 e não grava status nem nome novos.
+- `test_delete_missing_lead_returns_not_found`: `DELETE` de id inexistente responde 404 e o outro lead permanece.
+- `test_update_rejects_email_already_used_by_another_lead`: e-mail de outro lead responde 422 e não grava nome nem e-mail.
+
 ### Anotações do PHPStan
 
 `9842700` adicionou `@mixin \App\Models\Lead` em `LeadResource`, para o analisador reconhecer os atributos lidos em `toArray`, e removeu o PHPDoc órfão acima da propriedade `$namespace` comentada em `RouteServiceProvider`. O `boot()` e o namespace comentado não mudaram. O PHPStan deixa de apontar propriedades indefinidas e `@var` aplicado a método.
 
 ## 4. Testes e qualidade
 
-`php artisan test`, executado neste estado do repositório, aprovou 32 testes: 6 em `tests/Unit/LeadTest.php` e 26 em `tests/Feature/LeadApiTest.php`. Tempo aproximado: 1,20 s. A suíte usa SQLite em memória, conforme `phpunit.xml`.
+No estado de `873c529`, `php artisan test` aprovou 32 testes em cerca de 1,20 s. Na medição de 15/11/2026, com Xdebug em modo `coverage` e `vendor/bin/phpunit --coverage-clover coverage.xml`, a suíte aprovou 76 testes e 497 asserções: 6 em `tests/Unit/LeadTest.php`, 5 em `tests/Unit/CrmApiClientTest.php`, 56 em `tests/Feature/LeadApiTest.php` e 9 em `tests/Feature/ApiRateLimitTest.php`. A cobertura de linhas de `app/` foi 95,27% (262/275). `SyncLeads`, `CrmApiClient`, `CheckApiKey`, `LeadController`, `LeadResource`, `StoreLeadRequest` e `RouteServiceProvider` ficaram em 100% das linhas. A suíte usa SQLite em memória, conforme `phpunit.xml`.
 
-`composer analyse` (`phpstan analyse` com `phpstan.neon`) analisou 25 arquivos em `app/` e terminou sem erros. O aviso de que a série 1.12 do PHPStan está desatualizada é informativo. Não entra na contagem de erros do código analisado.
+`composer analyse` (`phpstan analyse` com `phpstan.neon`) terminou sem erros na última execução, em 26 arquivos de `app/`. O aviso de que a série 1.12 do PHPStan está desatualizada é informativo. Não entra na contagem de erros do código analisado.
 
-`composer lint` (`pint --test`) verificou 64 arquivos. Na primeira execução havia 10 com problema de estilo. O Pint foi aplicado em `app/Http/Controllers/LeadController.php`, `app/Http/Requests/StoreLeadRequest.php` e `tests/Feature/LeadApiTest.php`, os três arquivos de código modificados nesta auditoria, e esses três deixaram de aparecer no resultado. Permanecem 7 problemas, todos em arquivos que esta etapa não alterou: `app/Console/Commands/SyncLeads.php`, `app/Console/Kernel.php`, `app/Http/Middleware/RedirectIfAuthenticated.php`, `app/Models/User.php`, `app/Providers/AuthServiceProvider.php`, `app/Services/CrmApiClient.php` e `database/seeders/DatabaseSeeder.php`. São regras de estilo, não falha dos 32 testes.
+Na etapa de `0caeee8`, o Pint foi aplicado em `LeadController.php`, `StoreLeadRequest.php` e `LeadApiTest.php`. Permaneciam 7 problemas de estilo em arquivos que aquela etapa não alterou.
+
+`.github/workflows/ci.yml` dispara em push para `melhorias-auditoria` e em pull request para `master`. O único job é `ci`: instala as dependências do lock, roda PHPUnit com cobertura Clover, publica `coverage.xml`, executa PHPStan e o Pint dos arquivos alterados. Não há job `dependencies` e o workflow não executa `composer audit`.
 
 `git diff --cached --check` foi executado antes do commit `873c529` e não apontou problemas de whitespace nas alterações preparadas. Avisos de que o Git substituirá LF por CRLF no Windows referem-se a final de linha e não são falha de teste.
 
@@ -126,31 +152,25 @@ Estes itens pedem decisão do time antes de mudança de contrato ou de schema.
 
 Confirmado no código, com impacto dependente de ambiente ou de volume:
 
-- A listagem devolve o model inteiro, inclusive `raw_payload`, que guarda o payload do CRM quando o sync preenche a coluna. O detalhe em `LeadResource` não inclui esse campo.
-- `GET /api/leads` e `GET /api/leads/{id}` não exigem `X-Api-Key`. Isso está no `README.md`. O risco de leitura indevida existe se o host for acessível fora do público previsto.
-- A listagem não pagina. O custo depende da quantidade de leads.
-- O CORS autoriza qualquer origem. O efeito prático depende de o navegador conseguir alcançar a API.
+- A listagem e o detalhe usam `LeadResource` e não devolvem `raw_payload` nem `synced_at`. `store` e `update` ainda respondem com o model, então esses campos podem aparecer na criação e na atualização.
+- A listagem da API local não pagina. O custo depende da quantidade de leads. A paginação tratada foi a do CRM central.
+- O resumo do funil continua contando a tabela inteira, sem os filtros da listagem.
+- O CORS autoriza qualquer origem. O `README` cita dashboard e automações, sem URL de frontend. Nenhum domínio foi inventado em `config/cors.php`.
 - `external_id` não é único no banco. Duplicidade é possível pelo schema; não há evidência aqui de que já tenha ocorrido.
-- `SyncLeads` grava `$item['status']` na primeira importação sem conferir `Lead::STATUSES`, sem tratar ausência da chave e sem converter vazio. O README e os testes mostram `NEW` e `QUALIFIED`. `GET /statuses` está documentado, mas `CrmApiClient` não o consulta. Nas sincronizações seguintes, status e notas locais são preservados.
-
-Dependências:
-
-- O audit aponta 24 advisories e 2 pacotes abandonados nas versões instaladas. Atualizar exige checagem de compatibilidade com Laravel 9 e com o código desta API. Não cabe subir pacotes em bloco só para limpar o relatório.
+- `GET /statuses` está documentado na API externa, mas `CrmApiClient` não o consulta. O status recebido é validado contra `Lead::STATUSES` antes de gravar.
 
 ## 6. Recomendações para evolução
 
 - Paginar `index` e definir se `summary` deve respeitar os mesmos filtros da lista.
-- Usar `LeadResource` também na listagem, na criação e na atualização, para a resposta não variar conforme o endpoint e não incluir colunas internas por omissão.
-- Definir com o produto se a leitura precisa da mesma API Key da escrita, ou de outro controle, e aplicar isso de forma única nas rotas.
-- Restringir `allowed_origins` aos domínios que realmente chamam a API.
+- Usar `LeadResource` também na criação e na atualização. A listagem e o detalhe já usam o resource.
+- Quando existir a origem real do dashboard, restringir `allowed_origins` por variável de ambiente, sem curinga e sem domínio inventado.
 - Se a regra de negócio for um `external_id` por lead, e e-mail único de fato, refletir isso em índice único, além da validação.
-- Validar o payload do sync: status conhecido, campos obrigatórios presentes e resposta vazia ou malformada sem interromper o lote inteiro de forma opaca.
-- Planejar a saída do Laravel 9 e a troca de `fruitcake/laravel-cors` e `nunomaduro/larastan`, com testes de regressão antes do salto de versão.
-- Manter testes de feature para autorização, massa de campos e sync, e acrescentar casos de payload incompleto do CRM quando o contrato externo estiver fechado.
+- Autorizar, se for o caso, a atualização conjunta dos componentes Symfony 6.0 para a 6.4 mais recente permitida por `^6.0`, sem mover `laravel/framework`. Isso não apaga os sete avisos do Laravel 9.
+- Trocar `nunomaduro/larastan` por `larastan/larastan` ^2.11 só como renomeação do pacote de desenvolvimento. Manter `fruitcake/laravel-cors`.
 
 ## 7. O que faria com mais tempo
 
-Priorizaria um teste de contrato contra a API real do CRM, ou uma gravação sanitizada de `GET /leads` e `GET /statuses`, para fixar status, nulidade e paginação externa. `CrmApiClient` hoje pede uma única página com `per_page` 100 e não percorre `meta.last_page`.
+Priorizaria um teste de contrato contra a API real do CRM, ou uma gravação sanitizada de `GET /leads` e `GET /statuses`, para fixar status e nulidade além dos casos já cobertos com `Http::fake`. `CrmApiClient::getLeads` percorre as páginas até `meta.last_page`.
 
 Em seguida, revisaria o que fica de Sanctum: a rota `GET /api/user`, o guard de sessão e a ausência de emissão de token. O objetivo seria retirar superfície que a API de leads não usa, ou documentar por que permanece.
 
@@ -158,13 +178,12 @@ Também mediria a listagem com um volume combinado com o time, olharia consultas
 
 ## 8. Dúvidas para alinhamento com a equipe
 
-- Os `GET` de leads devem exigir `X-Api-Key`, como a escrita, ou a leitura aberta do README permanece?
-- `raw_payload` deve aparecer para os consumidores da listagem?
-- Qual é o volume esperado de leads e qual paginação a API deve oferecer?
+- A leitura de leads passou a exigir `X-Api-Key`. Criação e atualização ainda devolvem o model; `raw_payload` deve sair também dessas respostas?
+- Qual é o volume esperado de leads e a listagem local deve paginar?
 - `external_id` deve ser único?
-- Quais status o CRM envia de fato, inclusive `WON`, `LOST`, nulo ou valor fora de `Lead::STATUSES`?
-- Quais origens o CORS deve autorizar?
-- Existe janela para atualizar o Laravel 9 e as dependências apontadas pelo `composer audit`?
+- Quais status o CRM envia de fato, inclusive valor fora de `Lead::STATUSES`? O sync agora rejeita o lote inteiro nesse caso.
+- Qual é a origem do dashboard, para restringir o CORS sem usar `*`?
+- O Symfony pode subir para 6.4 sem sair do Laravel 9.52.22? A migração de framework fica fora do desafio.
 
 ## 9. Histórico de commits
 
@@ -175,6 +194,16 @@ Também mediria a listagem com um volume combinado com o time, olharia consultas
 5. `873c529` — fix: criação só com dados validados, atualização por lista de campos, e-mail único ignorando o próprio lead, edição de lead fechado sem exigir status no corpo, e status da criação restrito a `Lead::STATUSES`, com os testes correspondentes.
 6. `0caeee8` — style: aplicar padrão Pint nos arquivos alterados. Formatação de `LeadController.php`, `StoreLeadRequest.php` e `LeadApiTest.php`, sem alteração de lógica.
 7. `65e23c4` — docs: adicionar relatório de auditoria técnica.
+8. `ebe3c4b` — docs: completar o histórico de commits neste relatório.
+9. `113e674` — docs: documentar a validação da integração com o CRM real.
+10. `e5e47f2` — fix: sincronizar todas as páginas do CRM.
+11. `036df36` — fix: validar os leads antes da sincronização.
+12. `17e6319` — fix: proteger a listagem e a consulta de origens do CRM.
+13. `5bfb0d4` — test: ampliar a cobertura do cliente do CRM.
+14. `3027461` — ci: adicionar a pipeline de testes, cobertura Clover, PHPStan e Pint.
+15. `880d0d7` — feat: separar os limites de leitura e escrita da API.
+16. `f459347` — fix: exigir API Key na consulta de leads.
+17. `c44c193` — test: ampliar a cobertura dos endpoints de leads, incluindo status de lead finalizado, exclusão de id inexistente e e-mail já utilizado.
 
 ## Validação adicional da integração com o CRM central
 
