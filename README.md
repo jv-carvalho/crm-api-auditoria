@@ -81,7 +81,7 @@ As configurações específicas do projeto ficam no `.env`:
 ```env
 CRM_API_URL=https://crm.exemplo.com.br/api/challenge/v1   # enviada por e-mail
 CRM_API_TOKEN=seu-token-aqui                              # enviado por e-mail
-APP_API_KEY=uma-chave-local                               # exigida no header X-Api-Key das escritas
+APP_API_KEY=uma-chave-local                               # exigida no header X-Api-Key de todas as rotas de leads
 ```
 
 Comandos do dia a dia:
@@ -99,8 +99,8 @@ Todas as rotas ficam sob `/api`. Envie `Accept: application/json`.
 
 | Método | Rota | Descrição | Requer `X-Api-Key` |
 |---|---|---|---|
-| GET | `/api/leads` | Lista leads | não |
-| GET | `/api/leads/{id}` | Detalha um lead | não |
+| GET | `/api/leads` | Lista leads | sim |
+| GET | `/api/leads/{id}` | Detalha um lead | sim |
 | POST | `/api/leads` | Cria um lead | sim |
 | PUT | `/api/leads/{id}` | Atualiza um lead | sim |
 | DELETE | `/api/leads/{id}` | Remove um lead | sim |
@@ -119,10 +119,12 @@ Os filtros podem ser combinados, por exemplo `?status=QUALIFIED&source=INSTAGRAM
 
 ```bash
 # listar
-curl -H "Accept: application/json" "http://localhost:8000/api/leads?status=NEW"
+curl -H "Accept: application/json" -H "X-Api-Key: uma-chave-local" \
+  "http://localhost:8000/api/leads?status=NEW"
 
 # detalhar
-curl -H "Accept: application/json" http://localhost:8000/api/leads/1
+curl -H "Accept: application/json" -H "X-Api-Key: uma-chave-local" \
+  http://localhost:8000/api/leads/1
 
 # criar
 curl -X POST http://localhost:8000/api/leads \

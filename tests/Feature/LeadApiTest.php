@@ -225,6 +225,73 @@ class LeadApiTest extends TestCase
         $response->assertStatus(404);
     }
 
+    public function test_list_leads_without_api_key_is_rejected()
+    {
+        Lead::factory()->create();
+        unset($this->defaultHeaders['X-Api-Key']);
+
+        $response = $this->getJson('/api/leads');
+
+        $response->assertStatus(401);
+        $response->assertJson(['message' => 'Unauthorized']);
+        $this->assertDatabaseCount('leads', 1);
+    }
+
+    public function test_list_leads_with_wrong_api_key_is_rejected()
+    {
+        Lead::factory()->create();
+
+        $response = $this->withHeader('X-Api-Key', 'wrong-key')->getJson('/api/leads');
+
+        $response->assertStatus(401);
+        $response->assertJson(['message' => 'Unauthorized']);
+        $this->assertDatabaseCount('leads', 1);
+    }
+
+    public function test_list_leads_with_correct_api_key_is_allowed()
+    {
+        Lead::factory()->create();
+
+        $response = $this->withHeader('X-Api-Key', 'test-key')->getJson('/api/leads');
+
+        $response->assertStatus(200);
+        $response->assertJsonCount(1, 'data');
+    }
+
+    public function test_show_lead_without_api_key_is_rejected()
+    {
+        $lead = Lead::factory()->create();
+        unset($this->defaultHeaders['X-Api-Key']);
+
+        $response = $this->getJson('/api/leads/'.$lead->id);
+
+        $response->assertStatus(401);
+        $response->assertJson(['message' => 'Unauthorized']);
+        $this->assertDatabaseHas('leads', ['id' => $lead->id]);
+    }
+
+    public function test_show_lead_with_wrong_api_key_is_rejected()
+    {
+        $lead = Lead::factory()->create();
+
+        $response = $this->withHeader('X-Api-Key', 'wrong-key')->getJson('/api/leads/'.$lead->id);
+
+        $response->assertStatus(401);
+        $response->assertJson(['message' => 'Unauthorized']);
+        $this->assertDatabaseHas('leads', ['id' => $lead->id]);
+    }
+
+    public function test_show_lead_with_correct_api_key_is_allowed()
+    {
+        $lead = Lead::factory()->create();
+
+        $response = $this->withHeader('X-Api-Key', 'test-key')->getJson('/api/leads/'.$lead->id);
+
+        $response->assertStatus(200);
+        $response->assertJsonFragment(['email' => $lead->email]);
+        $this->assertDatabaseHas('leads', ['id' => $lead->id]);
+    }
+
     public function test_can_create_lead()
     {
         $this->fakeSources();

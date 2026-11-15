@@ -14,6 +14,7 @@ class ApiRateLimitTest extends TestCase
     public function test_read_requests_within_the_limit_are_allowed()
     {
         $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.15']);
+        $this->withHeader('X-Api-Key', 'test-key');
 
         for ($attempt = 0; $attempt < 10; $attempt++) {
             $this->getJson('/api/leads')->assertStatus(200);
@@ -23,6 +24,7 @@ class ApiRateLimitTest extends TestCase
     public function test_read_requests_over_the_limit_return_too_many_requests()
     {
         $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.10']);
+        $this->withHeader('X-Api-Key', 'test-key');
 
         for ($attempt = 0; $attempt < RouteServiceProvider::READ_PER_MINUTE; $attempt++) {
             $this->getJson('/api/leads')->assertStatus(200);
@@ -85,6 +87,7 @@ class ApiRateLimitTest extends TestCase
     public function test_read_limit_is_isolated_by_ip()
     {
         $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.13']);
+        $this->withHeader('X-Api-Key', 'test-key');
 
         for ($attempt = 0; $attempt < RouteServiceProvider::READ_PER_MINUTE; $attempt++) {
             $this->getJson('/api/leads')->assertStatus(200);

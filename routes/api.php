@@ -19,10 +19,9 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
 
-Route::get('/leads', [LeadController::class, 'index']);
-Route::get('/leads/{id}', [LeadController::class, 'show']);
-
 Route::middleware('api.key')->group(function () {
+    Route::get('/leads', [LeadController::class, 'index']);
+    Route::get('/leads/{id}', [LeadController::class, 'show']);
     Route::post('/leads', [LeadController::class, 'store']);
     Route::put('/leads/{id}', [LeadController::class, 'update']);
     Route::delete('/leads/{id}', [LeadController::class, 'destroy']);
