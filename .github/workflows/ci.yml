@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - melhorias-auditoria
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  ci:
+    name: Testes, PHPStan e Pint
+    runs-on: ubuntu-latest
+
+    env:
+      APP_KEY: base64:dGVzdGtleXRlc3RrZXl0ZXN0a2V5dGVzdGtleXRlc3Q=
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: pdo_sqlite, sqlite3
+          coverage: xdebug
+
+      - name: Instalar dependencias
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Executar testes com cobertura
+        run: vendor/bin/phpunit --coverage-clover coverage.xml
+
+      - name: Publicar coverage.xml
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-clover
+          path: coverage.xml
+          if-no-files-found: warn
+
+      - name: PHPStan
+        if: ${{ !cancelled() }}
+        run: vendor/bin/phpstan analyse --memory-limit=1G
+
+      - name: Pint nos arquivos PHP alterados em relacao a master
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          git fetch origin master
+          mapfile -t files < <(git diff --name-only --diff-filter=ACMR origin/master...HEAD -- '*.php')
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "Nenhum arquivo PHP alterado em relacao a master."
+            exit 0
+          fi
+          printf 'Verificando:\n'
+          printf ' - %s\n' "${files[@]}"
+          vendor/bin/pint --test "${files[@]}"

@@ -22,7 +22,7 @@ class LeadController extends Controller
         }
 
         if ($request->has('search')) {
-            $search = '%' . $request->search . '%';
+            $search = '%'.$request->search.'%';
 
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', $search)
@@ -75,11 +75,11 @@ class LeadController extends Controller
 
         $request->validate([
             'name' => 'sometimes|required|string|max:255',
-            'email' => 'sometimes|required|email|unique:leads,email,' . $lead->id,
+            'email' => 'sometimes|required|email|unique:leads,email,'.$lead->id,
             'phone' => 'nullable|string',
             'company' => 'nullable|string',
             'source' => 'sometimes|string',
-            'status' => 'sometimes|in:' . implode(',', Lead::STATUSES),
+            'status' => 'sometimes|in:'.implode(',', Lead::STATUSES),
             'notes' => 'nullable|string',
         ]);
 
