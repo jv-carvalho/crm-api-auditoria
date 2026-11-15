@@ -19,6 +19,10 @@ class RouteServiceProvider extends ServiceProvider
      */
     public const HOME = '/home';
 
+    public const READ_PER_MINUTE = 60;
+
+    public const WRITE_PER_MINUTE = 30;
+
     // protected $namespace = 'App\\Http\\Controllers';
 
     /**
@@ -50,7 +54,13 @@ class RouteServiceProvider extends ServiceProvider
     protected function configureRateLimiting()
     {
         RateLimiter::for('api', function (Request $request) {
-            return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
+            $identity = (string) ($request->user()?->id ?: $request->ip());
+
+            if (in_array($request->method(), ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
+                return Limit::perMinute(self::WRITE_PER_MINUTE)->by('write:'.$identity);
+            }
+
+            return Limit::perMinute(self::READ_PER_MINUTE)->by('read:'.$identity);
         });
     }
 }
