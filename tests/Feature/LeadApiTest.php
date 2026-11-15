@@ -470,6 +470,70 @@ class LeadApiTest extends TestCase
         ]);
     }
 
+    public function test_closed_lead_rejects_status_change()
+    {
+        foreach (['WON', 'LOST'] as $status) {
+            $lead = Lead::factory()->create([
+                'status' => $status,
+                'name' => 'Lead Finalizado',
+            ]);
+
+            $response = $this->putJson('/api/leads/'.$lead->id, [
+                'status' => 'CONTACTED',
+                'name' => 'Nome que não deve gravar',
+            ]);
+
+            $response->assertStatus(400);
+            $response->assertJson([
+                'message' => 'Não é possível alterar o status de um lead finalizado',
+            ]);
+            $this->assertDatabaseHas('leads', [
+                'id' => $lead->id,
+                'status' => $status,
+                'name' => 'Lead Finalizado',
+            ]);
+        }
+    }
+
+    public function test_delete_missing_lead_returns_not_found()
+    {
+        $lead = Lead::factory()->create();
+
+        $response = $this->deleteJson('/api/leads/999999');
+
+        $response->assertStatus(404);
+        $this->assertDatabaseHas('leads', ['id' => $lead->id]);
+        $this->assertDatabaseCount('leads', 1);
+    }
+
+    public function test_update_rejects_email_already_used_by_another_lead()
+    {
+        $existing = Lead::factory()->create([
+            'email' => 'ocupado@example.com',
+        ]);
+        $lead = Lead::factory()->create([
+            'name' => 'Nome Original',
+            'email' => 'original@example.com',
+        ]);
+
+        $response = $this->putJson('/api/leads/'.$lead->id, [
+            'name' => 'Nome que não deve gravar',
+            'email' => 'ocupado@example.com',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['email']);
+        $this->assertDatabaseHas('leads', [
+            'id' => $lead->id,
+            'name' => 'Nome Original',
+            'email' => 'original@example.com',
+        ]);
+        $this->assertDatabaseHas('leads', [
+            'id' => $existing->id,
+            'email' => 'ocupado@example.com',
+        ]);
+    }
+
     public function test_can_delete_lead()
     {
         $lead = Lead::factory()->create();
