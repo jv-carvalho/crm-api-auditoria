@@ -22,6 +22,4 @@ yarn-error.log
 
 # Relatorios de cobertura de testes
 /coverage/
-
-# Relatorios de cobertura de testes
-/coverage/
+/coverage.xml

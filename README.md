@@ -93,6 +93,29 @@ php artisan leads:sync   # importa os leads do CRM central; em produção roda d
 php artisan test
 ```
 
+### Docker
+
+O `docker compose` sobe a API com PHP 8.3, Composer 2.10.3 e o SQLite de `database/database.sqlite`. Não instala Redis nem MySQL. O código do repositório é montado no container, então o PHP instalado na máquina continua independente. A porta 8000 fica publicada só em `127.0.0.1`.
+
+Composer e o Laravel rodam com o usuário `app`. O UID e o GID padrão são 1000. No Linux, passe os ids do seu usuário para o `vendor` e o SQLite ficarem graváveis por você:
+
+```bash
+UID=$(id -u) GID=$(id -g) docker compose up --build
+```
+
+No Windows com Docker Desktop, `docker compose up --build` usa 1000 e o volume continua gravável.
+
+Na primeira subida, o container copia `.env.example` para `.env` se esse arquivo ainda não existir, gera `APP_KEY` só quando ela está vazia, instala as dependências do `composer.lock` quando `vendor/autoload.php` ainda não existe e roda as migrations pendentes. Uma migration já aplicada não recria a tabela nem apaga os leads.
+
+```bash
+docker compose up --build          # constrói a imagem e inicia em http://localhost:8000
+docker compose logs -f app         # acompanha a saída do container
+docker compose exec app php artisan migrate
+docker compose exec app php artisan test
+docker compose stop                # para os containers
+docker compose down                # para e remove os containers; o SQLite no disco permanece
+```
+
 ## Endpoints
 
 Todas as rotas ficam sob `/api`. Envie `Accept: application/json`.
