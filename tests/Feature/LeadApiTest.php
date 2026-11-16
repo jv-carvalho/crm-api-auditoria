@@ -325,6 +325,9 @@ class LeadApiTest extends TestCase
         ]);
 
         $response->assertStatus(201);
+        $response->assertJsonPath('data.email', 'carlos.lima@example.com');
+        $this->assertArrayNotHasKey('raw_payload', $response->json('data'));
+        $this->assertArrayNotHasKey('synced_at', $response->json('data'));
 
         $this->assertDatabaseHas('leads', [
             'email' => 'carlos.lima@example.com',
@@ -441,6 +444,10 @@ class LeadApiTest extends TestCase
         ]);
 
         $response->assertStatus(200);
+        $response->assertJsonPath('data.name', 'Nome Atualizado');
+        $response->assertJsonPath('data.external_id', 10);
+        $this->assertArrayNotHasKey('raw_payload', $response->json('data'));
+        $this->assertArrayNotHasKey('synced_at', $response->json('data'));
 
         $this->assertDatabaseHas('leads', [
             'id' => $lead->id,
@@ -504,6 +511,29 @@ class LeadApiTest extends TestCase
         $response->assertStatus(404);
         $this->assertDatabaseHas('leads', ['id' => $lead->id]);
         $this->assertDatabaseCount('leads', 1);
+    }
+
+    public function test_update_accepts_the_leads_own_email()
+    {
+        $lead = Lead::factory()->create([
+            'email' => 'mesmo@example.com',
+            'name' => 'Nome Original',
+        ]);
+
+        $response = $this->putJson('/api/leads/'.$lead->id, [
+            'email' => 'mesmo@example.com',
+            'name' => 'Nome Atualizado',
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonMissingValidationErrors('email');
+        $response->assertJsonPath('data.email', 'mesmo@example.com');
+        $response->assertJsonPath('data.name', 'Nome Atualizado');
+        $this->assertDatabaseHas('leads', [
+            'id' => $lead->id,
+            'email' => 'mesmo@example.com',
+            'name' => 'Nome Atualizado',
+        ]);
     }
 
     public function test_update_rejects_email_already_used_by_another_lead()

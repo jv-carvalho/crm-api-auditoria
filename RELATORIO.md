@@ -8,7 +8,7 @@ O escopo foi a integração com o CRM, a integridade do que é gravado, a autent
 
 ## 2. Resumo executivo
 
-A sincronização passou a percorrer todas as páginas do CRM, validar o lote inteiro e gravar dentro de uma transação. Status e notas de um lead que já existe continuam locais. As cinco rotas de leads exigem `X-Api-Key`. Leitura e escrita usam contadores separados. A listagem e o detalhe deixam de expor `raw_payload` e `synced_at`. Os números de testes, cobertura, PHPStan e Docker estão na seção 5. O workflow e a ressalva sobre o GitHub Actions estão na seção 6.
+A sincronização passou a percorrer todas as páginas do CRM, validar o lote inteiro e gravar dentro de uma transação. Status e notas de um lead que já existe continuam locais. As cinco rotas de leads exigem `X-Api-Key`. Leitura e escrita usam contadores separados. A listagem, o detalhe, a criação e a atualização deixam de expor `raw_payload` e `synced_at`. Os números de testes, cobertura, PHPStan e Docker estão na seção 5. O workflow e a ressalva sobre o GitHub Actions estão na seção 6.
 
 A decisão de permanecer no Laravel 9.52.22 vem do enunciado do desafio. Corrigir a integridade da sincronização e o acesso às rotas não exigia trocar o framework.
 
@@ -102,7 +102,7 @@ A decisão de permanecer no Laravel 9.52.22 vem do enunciado do desafio. Corrigi
 
 **Alteração implementada:** a regra passou a `unique:leads,email,{id}`. Commit `873c529`.
 
-**Testes:** `test_update_rejects_email_already_used_by_another_lead` cobre o e-mail de outro lead: responde 422 e não grava nome nem e-mail. Commit do teste: `c44c193`. Não há teste que reenvie o e-mail do próprio registro.
+**Testes:** `test_update_accepts_the_leads_own_email` reenvia o e-mail do próprio lead, responde 200 e grava o nome novo. `test_update_rejects_email_already_used_by_another_lead` cobre o e-mail de outro lead: responde 422 e não grava nome nem e-mail. O segundo teste entrou em `c44c193`.
 
 ### 3.6 Edição de lead finalizado
 
@@ -154,9 +154,9 @@ A decisão de permanecer no Laravel 9.52.22 vem do enunciado do desafio. Corrigi
 
 **Justificativa:** o resource já era o contrato do detalhe. Reutilizá-lo evita uma segunda lista de campos.
 
-**Alteração implementada:** `index` monta a resposta com `LeadResource`. `raw_payload` e `synced_at` não saem na listagem nem no detalhe. `external_id` continua no resource. Commit `17e6319`. `store` e `update` ainda respondem com `response()->json($lead)`, então o model completo pode aparecer na criação e na atualização. Isso não foi alterado.
+**Alteração implementada:** `index` monta a resposta com `LeadResource`. `show` já fazia o mesmo. `store` responde 201 com `LeadResource` e `update` responde 200 com `LeadResource`. `raw_payload` e `synced_at` não saem nessas respostas. `external_id` continua no resource. A listagem entrou em `17e6319`. Criação e atualização foram alinhadas depois, ainda sem commit.
 
-**Testes:** `test_lead_listing_does_not_expose_internal_sync_fields`.
+**Testes:** `test_lead_listing_does_not_expose_internal_sync_fields`. `test_create_lead_does_not_allow_internal_fields` e `test_update_lead_does_not_allow_internal_fields` conferem que `data` não traz `raw_payload` nem `synced_at`.
 
 ### 3.9 Uma página só na consulta ao CRM
 
@@ -320,13 +320,13 @@ No estado de `873c529`, `php artisan test` aprovou 32 testes em cerca de 1,20 s.
 
 As 13 linhas sem cobertura são do esqueleto padrão: uma em `app/Console/Kernel.php` (`schedule`), duas em `Authenticate`, cinco em `RedirectIfAuthenticated`, três em `TrustHosts` e duas em `BroadcastServiceProvider`. Isso não é cobertura total do projeto.
 
-Na mesma ocasião, `composer analyse` foi executado localmente e terminou sem erros em 26 arquivos de `app/`. Não há log dessa execução salvo no repositório. O aviso de que a série 1.12 do PHPStan está desatualizada é informativo e não entra na contagem de erros.
+Nessa medição de cobertura, `composer analyse` foi executado localmente e terminou sem erros em 26 arquivos de `app/`. Uma execução local posterior, depois das respostas com `LeadResource`, também terminou sem erros nesses 26 arquivos. Não há log dessas execuções salvo no repositório. O aviso de que a série 1.12 do PHPStan está desatualizada é informativo e não entra na contagem de erros.
 
-O Pint não foi reexecutado nesta revisão e seu estado atual não foi medido.
+`vendor/bin/pint --test`, executado nessa revisão, verificou 67 arquivos e apontou 5 problemas de estilo, todos fora dos arquivos alterados agora: `app/Console/Kernel.php`, `app/Http/Middleware/RedirectIfAuthenticated.php`, `app/Models/User.php`, `app/Providers/AuthServiceProvider.php` e `database/seeders/DatabaseSeeder.php`. Esses arquivos não foram reformatados.
 
 `git diff --cached --check`, antes do commit `873c529`, não apontou problema de whitespace nas alterações preparadas. Aviso de LF para CRLF no Windows refere-se a final de linha.
 
-O Docker usado na validação é o Docker 29.9.3. `docker compose config` publicou a porta só em `127.0.0.1:8000`. Dentro do container `crm-api-app-1`, `docker compose exec app php artisan test` aprovou 76 testes em 15,35 s. Essa execução não gerou o Clover.
+O Docker usado na validação é o Docker 29.9.3. `docker compose config` publicou a porta só em `127.0.0.1:8000`. Dentro do container `crm-api-app-1`, `docker compose exec app php artisan test` aprovou 76 testes em 15,35 s. Essa execução não gerou o Clover e é anterior ao teste de e-mail próprio. A suíte local posterior, com `vendor/bin/phpunit`, aprovou 77 testes e 509 asserções. Essa execução também não gerou Clover. A cobertura de 262 de 275 linhas, 95,27%, continua sendo só a medição de 15/11/2026 descrita acima. `tests/Feature/LeadApiTest.php` passou a 57 testes.
 
 ### Integração com o CRM central
 
@@ -344,7 +344,6 @@ O `docker compose config` montou o repositório em `/var/www/html` e passou UID 
 
 ## 7. Riscos e pontos que permanecem em aberto
 
-- `store` e `update` ainda devolvem o model. `raw_payload` e `synced_at` podem aparecer nessas duas respostas.
 - A listagem local não pagina, e o resumo do funil não usa os filtros da lista.
 - O CORS continua com origem `*`.
 - `external_id` não é único no banco.
@@ -361,7 +360,6 @@ Também mediria a listagem com um volume combinado com o time, olharia as contag
 
 ## 9. Perguntas para a equipe
 
-- Criação e atualização ainda devolvem o model. `raw_payload` deve sair também dessas respostas?
 - Qual é o volume esperado de leads, e a listagem local deve paginar? O resumo deve respeitar os filtros?
 - `external_id` deve ser único?
 - Quais status o CRM envia de fato, inclusive valor fora de `Lead::STATUSES`? O sync rejeita o lote inteiro nesse caso.

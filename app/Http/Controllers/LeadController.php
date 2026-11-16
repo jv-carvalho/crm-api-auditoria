@@ -62,7 +62,7 @@ class LeadController extends Controller
     {
         $lead = Lead::create($request->validated());
 
-        return response()->json($lead, 201);
+        return (new LeadResource($lead))->response()->setStatusCode(201);
     }
 
     public function update(Request $request, $id)
@@ -104,7 +104,7 @@ class LeadController extends Controller
             'notes',
         ]));
 
-        return response()->json($lead);
+        return new LeadResource($lead);
     }
 
     public function destroy($id)

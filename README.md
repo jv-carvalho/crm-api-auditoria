@@ -166,7 +166,27 @@ curl -X DELETE http://localhost:8000/api/leads/1 \
   -H "Accept: application/json" -H "X-Api-Key: uma-chave-local"
 ```
 
-Campos do lead: `name`, `email` e `source` são obrigatórios; `phone`, `company` e `notes` são opcionais; `status` assume `NEW` se não for informado.
+Campos de escrita: `name`, `email` e `source` são obrigatórios na criação; `phone`, `company` e `notes` são opcionais; `status` assume `NEW` se não for informado.
+
+Listagem, detalhe, criação e atualização devolvem o lead pelos mesmos campos públicos: `id`, `external_id`, `name`, `email`, `phone`, `company`, `source`, `status`, `notes`, `created_at` e `updated_at`. `raw_payload` e `synced_at` não entram nessa resposta. A criação responde 201 e as demais consultas e a atualização respondem 200. No detalhe, na criação e na atualização o lead fica em `data`. A listagem devolve `data`, `total` e `summary`.
+
+```json
+{
+    "data": {
+        "id": 1,
+        "external_id": null,
+        "name": "Maria Souza",
+        "email": "maria.souza@example.com",
+        "phone": "11912345678",
+        "company": "Padaria Exemplo",
+        "source": "INSTAGRAM",
+        "status": "NEW",
+        "notes": "Pediu orçamento",
+        "created_at": "2026-11-15T03:00:00.000000Z",
+        "updated_at": "2026-11-15T03:00:00.000000Z"
+    }
+}
+```
 
 ## API do CRM central (referência)
 
